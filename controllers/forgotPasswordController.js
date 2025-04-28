@@ -5,7 +5,6 @@ const db = require('../config/db');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Cấu hình NodeMailer sử dụng Gmail
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -14,7 +13,6 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Bước 1: Gửi OTP cho Quên mật khẩu
 exports.sendForgotPasswordOtp = async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: 'Vui lòng nhập email' });
@@ -39,7 +37,7 @@ exports.sendForgotPasswordOtp = async (req, res) => {
   }
 };
 
-// Bước 2: Xác nhận OTP cho Quên mật khẩu
+
 exports.verifyForgotPasswordOtp = async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).json({ message: 'Vui lòng nhập email và OTP' });

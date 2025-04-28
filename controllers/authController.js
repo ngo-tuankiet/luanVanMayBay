@@ -5,30 +5,24 @@ const nodemailer = require('nodemailer');
 const db = require('../config/db');
 require('dotenv').config();
 
-// Cấu hình NodeMailer sử dụng Gmail
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.GMAIL_USER,    // Email từ .env
-    pass: process.env.GMAIL_PASS     // App Password hoặc mật khẩu Gmail (nếu không dùng 2FA)
+    user: process.env.GMAIL_USER,    
+    pass: process.env.GMAIL_PASS    
   }
 });
 
-// Gửi OTP qua email (Signup - Bước 1)
 exports.sendOtp = async (req, res) => {
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ message: 'Vui lòng nhập email' });
   }
   try {
-    // Xóa OTP cũ cho email này nếu có
     await db.query('DELETE FROM EmailOtps WHERE email = ?', [email]);
-    // Sinh OTP 6 chữ số và tính thời gian hết hạn (5 phút sau)
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
-    // Lưu OTP vào bảng EmailOtps
+    const expiredAt = new Date(Date.now() + 5 * 60 *1000);
     await db.query('INSERT INTO EmailOtps (email, otp_code, expired_at) VALUES (?, ?, ?)', [email, otp, expiredAt]);
-    // Gửi OTP qua email
     const mailOptions = {
       from: process.env.GMAIL_USER,
       to: email,
@@ -43,7 +37,6 @@ exports.sendOtp = async (req, res) => {
   }
 };
 
-// Xác nhận OTP (Signup - Bước 2)
 exports.verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) {
@@ -54,7 +47,6 @@ exports.verifyOtp = async (req, res) => {
     if (rows.length === 0) {
       return res.status(400).json({ message: 'OTP không đúng hoặc đã hết hạn' });
     }
-    // Xóa OTP sau khi xác thực thành công
     await db.query('DELETE FROM EmailOtps WHERE email = ?', [email]);
     res.json({ message: 'Xác thực OTP thành công', emailVerified: email });
   } catch (error) {
@@ -63,27 +55,22 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
-// Đặt mật khẩu và tạo tài khoản (Signup - Bước 3)
 exports.setPassword = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ message: 'Vui lòng nhập email và mật khẩu' });
   }
   try {
-    // Kiểm tra xem email đã được đăng ký chưa
     const [existing] = await db.query('SELECT * FROM Users WHERE email = ?', [email]);
     if (existing.length > 0) {
       return res.status(400).json({ message: 'Email đã được đăng ký' });
     }
-    // Hash mật khẩu
     const hashedPassword = await bcrypt.hash(password, 10);
-    // Chèn tài khoản mới, đánh dấu rằng email đã được xác thực
-    // Lưu ý: Bảng Users cần có cột is_email_verified
+    
     const [result] = await db.query(
       `INSERT INTO Users (email, password, is_email_verified, role) VALUES (?, ?, ?, ?)`,
       [email, hashedPassword, true, 'Passenger']
     );
-    // Tạo JWT token cho user mới
     const token = jwt.sign(
       { userId: result.insertId, email, role: 'Passenger' },
       process.env.JWT_SECRET,
