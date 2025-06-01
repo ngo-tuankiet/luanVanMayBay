@@ -72,9 +72,9 @@ exports.findRoomGroup = async (room_type_id,room_quantity,check_in,check_out) =>
         break;
       }
 
-      if (Math.abs(bOut - inDate) <= 86400000) score += 10; // gần ngày đặt mới
-      if (Math.abs(bIn - outDate) <= 86400000) score += 10; // gần ngày kết thúc
-      if (Math.abs(bOut - inDate) <= 2 * 86400000) score += 5; // khoảng cách trung bình
+      if (Math.abs(bOut - inDate) <= 86400000) score += 10; 
+      if (Math.abs(bIn - outDate) <= 86400000) score += 10; 
+      if (Math.abs(bOut - inDate) <= 2 * 86400000) score += 5; 
     }
 
     if (!isConflict && score > bestScore) {
