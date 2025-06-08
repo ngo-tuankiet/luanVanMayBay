@@ -3,168 +3,89 @@ const BookingModel = require('../models/bookingModel');
 const db = require('../config/db');
 const UserBookingModel = require('../models/userBookingModel');
 
-exports.createSmartBooking = async (req, res) => {
+exports.previewBooking = async (req, res) => {
   const userId = req.user?.userId;
-  const { rooms, auto_assign_type } = req.body;
+  const {
+    room_type_id, check_in_date, check_out_date,
+    room_quantity, adults, children,
+    user_promotion_id, selected_room_promotion_id
+  } = req.body;
 
-  if (!rooms || !Array.isArray(rooms) || rooms.length === 0) {
+  if (!room_type_id || !check_in_date || !check_out_date || !room_quantity || !adults) {
     return res.status(400).json({
       statusCode: 400,
-      message: 'Danh sách phòng không hợp lệ',
+      message: 'Thiếu thông tin yêu cầu',
       data: null
     });
   }
 
   try {
-    if (rooms.length === 1 && auto_assign_type === 'smart') {
-      const roomData = rooms[0];
-      const {
-        room_type_id, check_in_date, check_out_date,
-        adults, children, guest_first_name, guest_last_name,
-        guest_email, guest_phone, promotion_id, special_requests
-      } = roomData;
-
-      const room_id = await RoomModel.findBestFitSmart(room_type_id, check_in_date, check_out_date);
-      if (!room_id) {
-        return res.status(409).json({
-          statusCode: 409,
-          message: 'Không tìm được phòng phù hợp với thuật toán smart-fit',
-          data: null
-        });
-      }
-
-      const conflicts = await BookingModel.checkRoomConflict(room_id, check_in_date, check_out_date);
-      if (conflicts.length > 0) {
-        return res.status(409).json({
-          statusCode: 409,
-          message: `Phòng ${room_id} đã được đặt trong thời gian này`,
-          data: null
-        });
-      }
-
-      const room = await BookingModel.getRoomBasePrice(room_id);
-      if (!room) {
-        return res.status(404).json({
-          statusCode: 404,
-          message: `Phòng ID ${room_id} không tồn tại`,
-          data: null
-        });
-      }
-
-      const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
-      let total_price = room.base_price * nights;
-
-      if (promotion_id) {
-        const promo = await BookingModel.getPromotion(promotion_id);
-        if (promo) {
-          if (promo.promotion_type_id === 1) total_price *= (1 - promo.discount_value / 100);
-          else if (promo.promotion_type_id === 2) total_price -= promo.discount_value;
-        }
-      }
-
-      const booking_id = await BookingModel.createBooking({
-        user_id: userId, room_id, check_in_date, check_out_date,
-        adults, children, total_price,
-        guest_first_name, guest_last_name, guest_email, guest_phone,
-        special_requests, promotion_id
-      });
-
-      return res.status(201).json({
-        statusCode: 201,
-        message: 'Đặt phòng thành công (smart-fit)',
-        data: {
-          booking_id,
-          room_id,
-          total_price
-        }
+    const roomType = await BookingModel.getRoomTypeBasePrice(room_type_id);
+    if (!roomType) {
+      return res.status(404).json({
+        statusCode: 404,
+        message: 'Loại phòng không tồn tại hoặc không hoạt động',
+        data: null
       });
     }
 
-    if (auto_assign_type === 'group') {
-      const { room_type_id, check_in_date, check_out_date } = rooms[0];
-      const result = await RoomModel.findRoomGroup(room_type_id, rooms.length, check_in_date, check_out_date);
+    const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
+    let total_price_before_discount = roomType.base_price * nights * room_quantity;
+    let total_price_after_discount = total_price_before_discount;
 
-      if (!result?.bestFit) {
-        return res.status(409).json({
-          statusCode: 409,
-          message: 'Không tìm được cụm phòng phù hợp',
-          data: {
-            suggestions: result?.alternatives
-          }
-        });
-      }
+    let roomPromotion = await BookingModel.getRoomPromotion(room_type_id, selected_room_promotion_id);
+    let userPromotion = user_promotion_id ? await BookingModel.getUserPromotion(user_promotion_id, userId || 0) : null;
 
-      for (let i = 0; i < rooms.length; i++) {
-        rooms[i].room_id = result.bestFit[i];
-      }
+    if (userPromotion) {
+      if (userPromotion.promotion_type_id === 1) total_price_after_discount *= (1 - userPromotion.discount_value / 100);
+      else if (userPromotion.promotion_type_id === 2) total_price_after_discount -= userPromotion.discount_value;
+    } else if (roomPromotion) {
+      if (roomPromotion.promotion_type_id === 1) total_price_after_discount *= (1 - roomPromotion.discount_value / 100);
+      else if (roomPromotion.promotion_type_id === 2) total_price_after_discount -= roomPromotion.discount_value;
     }
 
-    const createdBookings = [];
+    if (total_price_after_discount < 0) total_price_after_discount = 0;
 
-    for (const roomData of rooms) {
-      const {
-        room_id, check_in_date, check_out_date,
-        adults, children, guest_first_name, guest_last_name,
-        guest_email, guest_phone, promotion_id, special_requests
-      } = roomData;
-
-      const conflicts = await BookingModel.checkRoomConflict(room_id, check_in_date, check_out_date);
-      if (conflicts.length > 0) {
-        return res.status(409).json({
-          statusCode: 409,
-          message: `Phòng ${room_id} đã được đặt trong thời gian này`,
-          data: null
-        });
-      }
-
-      const room = await BookingModel.getRoomBasePrice(room_id);
-      if (!room) {
-        return res.status(404).json({
-          statusCode: 404,
-          message: `Phòng ID ${room_id} không tồn tại`,
-          data: null
-        });
-      }
-
-      const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
-      let total_price = room.base_price * nights;
-
-      if (promotion_id) {
-        const promo = await BookingModel.getPromotion(promotion_id);
-        if (promo) {
-          if (promo.promotion_type_id === 1) total_price *= (1 - promo.discount_value / 100);
-          else if (promo.promotion_type_id === 2) total_price -= promo.discount_value;
-        }
-      }
-
-      const booking_id = await BookingModel.createBooking({
-        user_id: userId, room_id, check_in_date, check_out_date,
-        adults, children, total_price,
-        guest_first_name, guest_last_name, guest_email, guest_phone,
-        special_requests, promotion_id
-      });
-
-      createdBookings.push({ booking_id, room_id, total_price });
-    }
-
-    return res.status(201).json({
-      statusCode: 201,
-      message: 'Đặt phòng thành công',
+    return res.status(200).json({
+      statusCode: 200,
+      message: 'Thông tin đặt phòng dự kiến',
       data: {
-        bookings: createdBookings
+        room_type_id,
+        room_type_name: roomType.type_name,
+        check_in_date,
+        check_out_date,
+        room_quantity,
+        adults,
+        children,
+        nights,
+        base_price: roomType.base_price,
+        total_price_before_discount,
+        total_price_after_discount,
+        room_promotion_applied: roomPromotion ? {
+          promotion_id: roomPromotion.promotion_id,
+          promotion_name: roomPromotion.promotion_name,
+          promotion_type_id: roomPromotion.promotion_type_id,
+          discount_value: roomPromotion.discount_value
+        } : null,
+        user_promotion_applied: userPromotion ? {
+          user_promotion_id: userPromotion.user_promotion_id,
+          promotion_id: userPromotion.promotion_id,
+          promotion_name: userPromotion.promotion_name,
+          promotion_type_id: userPromotion.promotion_type_id,
+          discount_value: userPromotion.discount_value
+        } : null
       }
     });
 
   } catch (error) {
-    console.error('Lỗi đặt phòng:', error);
+    console.error('Lỗi preview booking:', error);
     return res.status(500).json({
       statusCode: 500,
-      message: 'Đã xảy ra lỗi trong quá trình đặt phòng',
+      message: 'Đã xảy ra lỗi trong quá trình xử lý',
       data: { error: error.message }
     });
   }
 };
-
 
 exports.getUserBookings = async (req, res) => {
   const userId = req.user?.userId;
@@ -188,6 +109,215 @@ exports.getUserBookings = async (req, res) => {
     return res.status(500).json({
       statusCode: 500,
       message: 'Đã xảy ra lỗi máy chủ',
+      data: { error: error.message }
+    });
+  }
+};
+
+exports.createSmartBooking = async (req, res) => {
+  const userId = req.user?.userId;
+  const { rooms, auto_assign_type } = req.body;
+
+  if (!rooms || !Array.isArray(rooms) || rooms.length === 0) {
+    return res.status(400).json({
+      statusCode: 400,
+      message: 'Danh sách phòng không hợp lệ',
+      data: null
+    });
+  }
+
+  try {
+    // SMART
+    if (rooms.length === 1 && auto_assign_type === 'smart') {
+      const roomData = rooms[0];
+      const {
+        room_type_id, check_in_date, check_out_date,
+        adults, children, guest_first_name, guest_last_name,
+        guest_email, guest_phone, user_promotion_id, room_promotion_id, special_requests
+      } = roomData;
+
+      let room_id = await RoomModel.findBestFitSmart(room_type_id, check_in_date, check_out_date);
+
+      if (!room_id) {
+        const [fallbackRooms] = await db.query(`
+          SELECT r.room_id
+          FROM rooms r
+          WHERE r.room_type_id = ? AND r.is_active = TRUE AND r.room_id NOT IN (
+            SELECT b.room_id
+            FROM bookings b
+            WHERE (b.check_in_date < ? AND b.check_out_date > ?) AND b.booking_status IN ('pending', 'confirmed')
+          )
+          LIMIT 1
+        `, [room_type_id, check_out_date, check_in_date]);
+
+        if (fallbackRooms.length === 0) {
+          return res.status(409).json({
+            statusCode: 409,
+            message: 'Không còn phòng khả dụng để đặt',
+            data: null
+          });
+        }
+
+        room_id = fallbackRooms[0].room_id;
+      }
+
+      const roomBase = await BookingModel.getRoomBasePrice(room_id);
+      if (!roomBase) {
+        return res.status(404).json({
+          statusCode: 404,
+          message: `Phòng ID ${room_id} không tồn tại`,
+          data: null
+        });
+      }
+
+      const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
+      let total_price = roomBase.base_price * nights;
+      let applied_promotion_id = null;
+
+      if (user_promotion_id) {
+        const userPromo = await BookingModel.getUserPromotion(user_promotion_id, userId || 0);
+        if (userPromo) {
+          applied_promotion_id = userPromo.promotion_id;
+          if (userPromo.promotion_type_id === 1) total_price *= (1 - userPromo.discount_value / 100);
+          else if (userPromo.promotion_type_id === 2) total_price -= userPromo.discount_value;
+          await BookingModel.markUserPromotionUsed(user_promotion_id);
+        }
+      } else if (room_promotion_id) {
+        const roomPromo = await BookingModel.getRoomPromotion(room_type_id, room_promotion_id);
+        if (roomPromo) {
+          applied_promotion_id = roomPromo.promotion_id;
+          if (roomPromo.promotion_type_id === 1) total_price *= (1 - roomPromo.discount_value / 100);
+          else if (roomPromo.promotion_type_id === 2) total_price -= roomPromo.discount_value;
+        }
+      }
+
+      if (total_price < 0) total_price = 0;
+
+      const booking_id = await BookingModel.createBooking({
+        user_id: userId || null,
+        room_id, check_in_date, check_out_date,
+        adults, children, total_price,
+        guest_first_name, guest_last_name, guest_email, guest_phone,
+        special_requests, promotion_id: applied_promotion_id
+      });
+
+      return res.status(201).json({
+        statusCode: 201,
+        message: 'Đặt phòng thành công (smart-fit)',
+        data: { booking_id, room_id, total_price }
+      });
+    }
+
+    // GROUP
+    if (auto_assign_type === 'group') {
+      const { room_type_id, check_in_date, check_out_date } = rooms[0];
+      const room_quantity = rooms.length;
+
+      const result = await RoomModel.findRoomGroup(room_type_id, room_quantity, check_in_date, check_out_date);
+
+      let room_ids = [];
+
+      if (result?.bestFit) {
+        room_ids = result.bestFit;
+      } else {
+        const [fallbackRooms] = await db.query(`
+          SELECT r.room_id
+          FROM rooms r
+          WHERE r.room_type_id = ? AND r.is_active = TRUE AND r.room_id NOT IN (
+            SELECT b.room_id
+            FROM bookings b
+            WHERE (b.check_in_date < ? AND b.check_out_date > ?) AND b.booking_status IN ('pending', 'confirmed')
+          )
+          LIMIT ?
+        `, [room_type_id, check_out_date, check_in_date, room_quantity]);
+
+        if (fallbackRooms.length < room_quantity) {
+          return res.status(409).json({
+            statusCode: 409,
+            message: 'Không đủ phòng khả dụng để fallback',
+            data: { suggestions: result?.alternatives }
+          });
+        }
+
+        room_ids = fallbackRooms.map(r => r.room_id);
+      }
+
+      const createdBookings = [];
+
+      for (let i = 0; i < room_quantity; i++) {
+        const roomData = rooms[i];
+        const {
+          check_in_date, check_out_date,
+          adults, children, guest_first_name, guest_last_name,
+          guest_email, guest_phone, user_promotion_id, room_promotion_id, special_requests
+        } = roomData;
+
+        const room_id = room_ids[i];
+
+        const conflicts = await BookingModel.checkRoomConflict(room_id, check_in_date, check_out_date);
+        if (conflicts.length > 0) {
+          return res.status(409).json({
+            statusCode: 409,
+            message: `Phòng ${room_id} đã được đặt trong thời gian này`,
+            data: null
+          });
+        }
+
+        const roomBase = await BookingModel.getRoomBasePrice(room_id);
+        if (!roomBase) {
+          return res.status(404).json({
+            statusCode: 404,
+            message: `Phòng ID ${room_id} không tồn tại`,
+            data: null
+          });
+        }
+
+        const nights = Math.ceil((new Date(check_out_date) - new Date(check_in_date)) / (1000 * 60 * 60 * 24));
+        let total_price = roomBase.base_price * nights;
+        let applied_promotion_id = null;
+
+        if (user_promotion_id) {
+          const userPromo = await BookingModel.getUserPromotion(user_promotion_id, userId || 0);
+          if (userPromo) {
+            applied_promotion_id = userPromo.promotion_id;
+            if (userPromo.promotion_type_id === 1) total_price *= (1 - userPromo.discount_value / 100);
+            else if (userPromo.promotion_type_id === 2) total_price -= userPromo.discount_value;
+            await BookingModel.markUserPromotionUsed(user_promotion_id);
+          }
+        } else if (room_promotion_id) {
+          const roomPromo = await BookingModel.getRoomPromotion(room_type_id, room_promotion_id);
+          if (roomPromo) {
+            applied_promotion_id = roomPromo.promotion_id;
+            if (roomPromo.promotion_type_id === 1) total_price *= (1 - roomPromo.discount_value / 100);
+            else if (roomPromo.promotion_type_id === 2) total_price -= roomPromo.discount_value;
+          }
+        }
+
+        if (total_price < 0) total_price = 0;
+
+        const booking_id = await BookingModel.createBooking({
+          user_id: userId || null,
+          room_id, check_in_date, check_out_date,
+          adults, children, total_price,
+          guest_first_name, guest_last_name, guest_email, guest_phone,
+          special_requests, promotion_id: applied_promotion_id
+        });
+
+        createdBookings.push({ booking_id, room_id, total_price });
+      }
+
+      return res.status(201).json({
+        statusCode: 201,
+        message: 'Đặt phòng thành công (group-fit)',
+        data: { bookings: createdBookings }
+      });
+    }
+
+  } catch (error) {
+    console.error('Lỗi đặt phòng:', error);
+    return res.status(500).json({
+      statusCode: 500,
+      message: 'Đã xảy ra lỗi trong quá trình đặt phòng',
       data: { error: error.message }
     });
   }

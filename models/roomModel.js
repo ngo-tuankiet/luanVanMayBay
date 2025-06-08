@@ -69,7 +69,7 @@ exports.findRoomGroup = async (room_type_id,room_quantity,check_in,check_out) =>
 
       if (inDate < bOut && outDate > bIn) {
         isConflict = true;
-        break;
+         break;
       }
 
       if (Math.abs(bOut - inDate) <= 86400000) score += 10; 

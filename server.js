@@ -12,7 +12,10 @@ const bookingRoutes = require('./routes/bookingRoutes');
 app.use('/api/bookings', bookingRoutes);
 const roomRoutes = require('./routes/roomRoutes');
 app.use('/api/rooms', roomRoutes);
-
+const roomType = require('./routes/roomTypeRouter');
+app.use('/api/room',roomType);
+const payment = require('./routes/paymentRouter');
+app.use('/api/pay',payment);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server đang chạy tại http://localhost:${PORT}`);

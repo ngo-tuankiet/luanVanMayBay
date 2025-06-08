@@ -1,5 +1,5 @@
 
-const mysql = require("mysql2/promise"); // Đúng, sử dụng phiên bản có hỗ trợ Promise
+const mysql = require("mysql2/promise"); 
 require("dotenv").config();
 const pool = mysql.createPool({
     host: process.env.DB_HOST || '127.0.0.1',      
@@ -12,7 +12,6 @@ const pool = mysql.createPool({
     port: process.env.DB_PORT || 3306
 });
 
-// Kiểm tra kết nối
 pool.getConnection((err, connection) => {
   if (err) {
     console.error('Kết nối MySQL thất bại:', err);
