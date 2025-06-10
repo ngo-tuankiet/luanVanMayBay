@@ -24,7 +24,7 @@
 
       const [result] = await db.query(`
         INSERT INTO bookings 
-        (user_id, room_id, check_in_date, check_out_date, adults, children, total_price, booking_status, payment_status, payment_method, guest_first_name, guest_last_name, guest_email, guest_phone, special_requests, promotion_id)
+        (user_id, room_id, check_in_date, check_out_date, adults, children, total_price, booking_status, payment_status, payment_method, guest_first_name, guest_last_name, guest_email, guest_phone, special_requests, promotion_id,hold_expired_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', 'online', ?, ?, ?, ?, ?, ?,?)
       `, [
         user_id, room_id, check_in_date, check_out_date, adults, children || 0, total_price,
