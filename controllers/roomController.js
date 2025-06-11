@@ -1,5 +1,6 @@
 const db = require('../config/db');
 
+
 exports.getAllRooms = async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -30,3 +31,6 @@ exports.getAllRooms = async (req, res) => {
     });
   }
 };
+
+
+

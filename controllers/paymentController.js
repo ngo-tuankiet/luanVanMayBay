@@ -1,9 +1,7 @@
 const moment = require('moment');
 const querystring = require('qs');
 const crypto = require('crypto');
-
 const db = require('../config/db');
-const BookingModel = require('../models/bookingModel');
 
 exports.createPaymentUrl = async (req, res) => {
   const { booking_id, booking_group_id, amount } = req.body;
@@ -75,8 +73,9 @@ exports.createPaymentUrl = async (req, res) => {
   const vnp_HashSecret = process.env.VNP_HASH_SECRET;
   const vnp_Url = process.env.VNP_URL;
   const vnp_ReturnUrl = process.env.VNP_RETURN_URL;
-console.log('>>> DEBUG VNP_HASH_SECRET:', vnp_HashSecret);
-console.log('>>> DEBUG VNP_HASH_SECRET length:', vnp_HashSecret.length);
+
+  console.log('>>> DEBUG VNP_HASH_SECRET:', vnp_HashSecret);
+
   const createDate = moment().format('YYYYMMDDHHmmss');
 
   // Build params
@@ -98,19 +97,18 @@ console.log('>>> DEBUG VNP_HASH_SECRET length:', vnp_HashSecret.length);
   // Sort params
   vnp_Params = sortObject(vnp_Params);
 
-  // DEBUG LOG
+  // Build signData (CHUẨN ENCODE từng value)
+  const signData = Object.entries(vnp_Params).map(([key, value]) => {
+    return `${key}=${encodeURIComponent(value)}`;
+  }).join('&');
+
   console.log('>>> DEBUG CREATE: Params to be signed:');
   console.log(vnp_Params);
-
-  const signData = querystring.stringify(vnp_Params, { encode: false });
 
   console.log('>>> DEBUG CREATE: signData string:');
   console.log(signData);
 
-  if (!vnp_HashSecret) {
-    console.error('>>> ERROR: VNP_HASH_SECRET is undefined !!!');
-  }
-
+  // Create HMAC
   const hmac = crypto.createHmac('sha512', vnp_HashSecret);
   const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
@@ -132,6 +130,7 @@ console.log('>>> DEBUG VNP_HASH_SECRET length:', vnp_HashSecret.length);
   });
 };
 
+
 exports.vnpayReturn = async (req, res) => {
   const vnp_Params = req.query;
   const secureHash = vnp_Params['vnp_SecureHash'];
@@ -141,21 +140,15 @@ exports.vnpayReturn = async (req, res) => {
 
   vnp_Params = sortObject(vnp_Params);
 
-  // DEBUG LOG RETURN
   console.log('>>> DEBUG RETURN: Params to be signed:');
   console.log(vnp_Params);
 
   const signData = querystring.stringify(vnp_Params, { encode: false });
-
-  console.log('>>> DEBUG RETURN: signData string:');
-  console.log(signData);
-
   const hmac = crypto.createHmac('sha512', process.env.VNP_HASH_SECRET);
   const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
   console.log('>>> DEBUG RETURN: signed hash:');
   console.log(signed);
-
   console.log('>>> DEBUG RETURN: vnp_SecureHash from request:');
   console.log(secureHash);
 
@@ -165,53 +158,30 @@ exports.vnpayReturn = async (req, res) => {
     const idPart = vnp_Params['vnp_TxnRef'].split('-')[0];
 
     if (responseCode === '00') {
-      const [[group]] = await db.query(
-        `SELECT * FROM booking_groups WHERE booking_group_id = ?`,
-        [idPart]
-      );
-
+      const [[group]] = await db.query(`SELECT * FROM booking_groups WHERE booking_group_id = ?`, [idPart]);
       if (group) {
-        await db.query(
-          `UPDATE booking_groups SET payment_status = 'paid' WHERE booking_group_id = ?`,
-          [idPart]
-        );
-
-        await db.query(
-          `UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_group_id = ?`,
-          [idPart]
-        );
+        await db.query(`UPDATE booking_groups SET payment_status = 'paid' WHERE booking_group_id = ?`, [idPart]);
+        await db.query(`UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_group_id = ?`, [idPart]);
 
         return res.status(200).json({
           statusCode: 200,
           message: 'Thanh toán group thành công',
-          data: {
-            booking_group_id: idPart,
-            amount
-          }
+          data: { booking_group_id: idPart, amount }
         });
       } else {
-        await db.query(
-          `UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_id = ?`,
-          [idPart]
-        );
+        await db.query(`UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_id = ?`, [idPart]);
 
         return res.status(200).json({
           statusCode: 200,
           message: 'Thanh toán booking thành công',
-          data: {
-            booking_id: idPart,
-            amount
-          }
+          data: { booking_id: idPart, amount }
         });
       }
     } else {
       return res.status(400).json({
         statusCode: 400,
         message: 'Thanh toán thất bại',
-        data: {
-          id: idPart,
-          responseCode
-        }
+        data: { id: idPart, responseCode }
       });
     }
   } else {
@@ -232,21 +202,15 @@ exports.vnpayIpn = async (req, res) => {
 
   vnp_Params = sortObject(vnp_Params);
 
-  // DEBUG LOG IPN
   console.log('>>> DEBUG IPN: Params to be signed:');
   console.log(vnp_Params);
 
   const signData = querystring.stringify(vnp_Params, { encode: false });
-
-  console.log('>>> DEBUG IPN: signData string:');
-  console.log(signData);
-
   const hmac = crypto.createHmac('sha512', process.env.VNP_HASH_SECRET);
   const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
   console.log('>>> DEBUG IPN: signed hash:');
   console.log(signed);
-
   console.log('>>> DEBUG IPN: vnp_SecureHash from request:');
   console.log(secureHash);
 
@@ -256,28 +220,14 @@ exports.vnpayIpn = async (req, res) => {
     const idPart = vnp_Params['vnp_TxnRef'].split('-')[0];
 
     if (responseCode === '00') {
-      const [[group]] = await db.query(
-        `SELECT * FROM booking_groups WHERE booking_group_id = ?`,
-        [idPart]
-      );
-
+      const [[group]] = await db.query(`SELECT * FROM booking_groups WHERE booking_group_id = ?`, [idPart]);
       if (group) {
-        await db.query(
-          `UPDATE booking_groups SET payment_status = 'paid' WHERE booking_group_id = ?`,
-          [idPart]
-        );
-
-        await db.query(
-          `UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_group_id = ?`,
-          [idPart]
-        );
+        await db.query(`UPDATE booking_groups SET payment_status = 'paid' WHERE booking_group_id = ?`, [idPart]);
+        await db.query(`UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_group_id = ?`, [idPart]);
 
         return res.status(200).send('{"RspCode":"00","Message":"Confirm Success (Group)"}');
       } else {
-        await db.query(
-          `UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_id = ?`,
-          [idPart]
-        );
+        await db.query(`UPDATE bookings SET booking_status = 'confirmed', payment_status = 'paid', hold_expired_at = NULL WHERE booking_id = ?`, [idPart]);
 
         return res.status(200).send('{"RspCode":"00","Message":"Confirm Success (Booking)"}');
       }

@@ -6,6 +6,5 @@ const { verifyToken, verifyTokenOptional } = require('../middlewares/authMiddlew
 router.post('/confirm', verifyToken, bookingController.createSmartBooking);
 router.get('/my-bookings', verifyToken, bookingController.getUserBookings);
 router.post('/preview', verifyTokenOptional, bookingController.previewBooking);
-
 module.exports = router;
     

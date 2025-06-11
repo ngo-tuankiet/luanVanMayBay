@@ -96,8 +96,5 @@ async findFallbackRooms(room_type_id, room_quantity, check_in, check_out) {
 
     return rooms;
 }
-
-
-
   };
   module.exports = BookingModel;

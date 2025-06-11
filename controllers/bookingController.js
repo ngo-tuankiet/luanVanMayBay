@@ -19,6 +19,15 @@ exports.previewBooking = async (req, res) => {
     });
   }
 
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(check_in_date) || !dateRegex.test(check_out_date)) {
+    return res.status(400).json({
+      statusCode: 400,
+      message: 'Định dạng ngày không hợp lệ, yêu cầu dạng YYYY-MM-DD',
+      data: null
+    });
+  }
+
   try {
     const roomType = await BookingModel.getRoomTypeBasePrice(room_type_id);
     if (!roomType) {
@@ -34,14 +43,31 @@ exports.previewBooking = async (req, res) => {
     let total_price_after_discount = total_price_before_discount;
 
     let roomPromotion = await BookingModel.getRoomPromotion(room_type_id, selected_room_promotion_id);
-    let userPromotion = user_promotion_id ? await BookingModel.getUserPromotion(user_promotion_id, userId || 0) : null;
+
+    let userPromotion = null;
+    if (user_promotion_id && userId) {
+      userPromotion = await BookingModel.getUserPromotion(user_promotion_id, userId);
+      if (!userPromotion) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: 'Khuyến mãi khách hàng không hợp lệ',
+          data: null
+        });
+      }
+    }
 
     if (userPromotion) {
-      if (userPromotion.promotion_type_id === 1) total_price_after_discount *= (1 - userPromotion.discount_value / 100);
-      else if (userPromotion.promotion_type_id === 2) total_price_after_discount -= userPromotion.discount_value;
+      if (userPromotion.promotion_type_id === 1) {
+        total_price_after_discount *= (1 - userPromotion.discount_value / 100);
+      } else if (userPromotion.promotion_type_id === 2) {
+        total_price_after_discount -= userPromotion.discount_value;
+      }
     } else if (roomPromotion) {
-      if (roomPromotion.promotion_type_id === 1) total_price_after_discount *= (1 - roomPromotion.discount_value / 100);
-      else if (roomPromotion.promotion_type_id === 2) total_price_after_discount -= roomPromotion.discount_value;
+      if (roomPromotion.promotion_type_id === 1) {
+        total_price_after_discount *= (1 - roomPromotion.discount_value / 100);
+      } else if (roomPromotion.promotion_type_id === 2) {
+        total_price_after_discount -= roomPromotion.discount_value;
+      }
     }
 
     if (total_price_after_discount < 0) total_price_after_discount = 0;
@@ -86,6 +112,7 @@ exports.previewBooking = async (req, res) => {
     });
   }
 };
+
 
 exports.getUserBookings = async (req, res) => {
   const userId = req.user?.userId;
