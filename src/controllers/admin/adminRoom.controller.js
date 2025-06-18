@@ -1,4 +1,5 @@
 const RoomModel = require("../../models/admin/room.model");
+const prisma = require("../../config/prisma.config");
 
 
 exports.getAllRooms = async (req, res) => {
@@ -29,8 +30,6 @@ exports.getAllRooms = async (req, res) => {
     res.status(500).json({ statusCode: 500, message: err.message });
   }
 };
-
- 
 exports.createRoom = async (req, res) => {
   try {
     const {
@@ -41,66 +40,99 @@ exports.createRoom = async (req, res) => {
       is_active = true,
     } = req.body;
 
-    if (await RoomModel.findByRoomNumber(room_number)) {
-      return res
-        .status(400)
-        .json({ statusCode: 400, message: "Số phòng đã tồn tại" });
+    // Kiểm tra số phòng trùng
+    const existing = await RoomModel.findByRoomNumber(room_number);
+    if (existing) {
+      return res.status(400).json({
+        statusCode: 400,
+        message: "Số phòng đã tồn tại",
+      });
+    }
+
+    // Kiểm tra loại phòng tồn tại
+    const checkRoomType = await prisma.room_types.findUnique({
+      where: { room_type_id: Number(room_type_id) },
+    });
+    if (!checkRoomType) {
+      return res.status(400).json({
+        statusCode: 400,
+        message: "Loại phòng không tồn tại",
+      });
     }
 
     const room = await RoomModel.create({
       room_number,
-      room_type_id: Number(room_type_id),
+      room_type_id,
       floor,
       status,
       is_active,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       statusCode: 201,
       message: "Tạo phòng thành công",
       data: room,
     });
-  } catch (err) {
-    res.status(500).json({ statusCode: 500, message: err.message });
+  } catch (error) {
+    return res.status(500).json({
+      statusCode: 500,
+      message: "Lỗi máy chủ",
+      error: error.message,
+    });
   }
 };
-
 
 exports.updateRoom = async (req, res) => {
   const { id } = req.params;
   try {
     const current = await RoomModel.findById(id);
-    if (!current)
-      return res
-        .status(404)
-        .json({ statusCode: 404, message: "Không tìm thấy phòng" });
+    if (!current) {
+      return res.status(404).json({
+        statusCode: 404,
+        message: "Không tìm thấy phòng",
+      });
+    }
 
-    const { room_number } = req.body;
+    const { room_number, room_type_id } = req.body;
+
+    // Kiểm tra trùng room_number
     if (
       room_number &&
       room_number !== current.room_number &&
       (await RoomModel.findByRoomNumber(room_number))
     ) {
-      return res
-        .status(400)
-        .json({ statusCode: 400, message: "Số phòng đã tồn tại" });
+      return res.status(400).json({
+        statusCode: 400,
+        message: "Số phòng đã tồn tại",
+      });
     }
 
-    const updated = await RoomModel.updateById(id, {
-      ...req.body,
-      room_type_id:
-        req.body.room_type_id !== undefined
-          ? Number(req.body.room_type_id)
-          : undefined,
-    });
+    // Nếu có truyền room_type_id thì kiểm tra tồn tại
+    if (room_type_id !== undefined) {
+      const exists = await prisma.room_types.findUnique({
+        where: { room_type_id: Number(room_type_id) },
+      });
+      if (!exists) {
+        return res.status(400).json({
+          statusCode: 400,
+          message: "Loại phòng không tồn tại",
+        });
+      }
+    }
 
-    res.json({
+    const updated = await RoomModel.updateById(id, req.body);
+
+    return res.json({
       statusCode: 200,
       message: "Cập nhật phòng thành công",
       data: updated,
     });
-  } catch (err) {
-    res.status(500).json({ statusCode: 500, message: err.message });
+  } catch (error) {
+    return res.status(500).json({
+      statusCode: 500,
+      message: "Lỗi máy chủ",
+      error: error.message,
+    });
   }
 };
 
