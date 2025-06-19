@@ -45,3 +45,55 @@ exports.findByCode = orderCode => {
     },
   });
 };
+
+exports.updateCancel = (orderCode, userId) => {
+  return prisma.orders.updateMany({
+    where: {
+      AND: {
+        order_code: orderCode,
+        user_id: userId,
+      },
+    },
+    data: {
+      status: "cancelled",
+      updated_by: new Date(),
+    },
+  });
+};
+
+exports.findByCodeAndUserId = (orderCode, userId) => {
+  return prisma.orders.findMany({
+    where: {
+      AND: {
+        order_code: orderCode,
+        user_id: userId,
+      },
+    },
+  });
+};
+
+exports.findExpiredBankTransfer = () => {
+  return prisma.orders.findMany({
+    where: {
+      expired_at: {
+        lt: new Date(),
+      },
+      payment_method: "bank_transfer",
+      status: "pending",
+    },
+  });
+};
+
+exports.updateCancelByIds = orderIds => {
+  return prisma.orders.updateMany({
+    where: {
+      order_id: {
+        in: orderIds,
+      },
+    },
+    data: {
+      status: "cancelled",
+      updated_by: new Date(),
+    },
+  });
+};

@@ -9,6 +9,7 @@ const roomType2Route = require("./routes/roomType.route");
 const payment2Route = require("./routes/payment.route");
 const AdminUser = require("../src/routes/admin/adminUser.route");
 const adminRoom = require("../src/routes/admin/adminRoom.route");
+const roomService = require("../src/routes/roomService.route")
 dotenv.config();
 const PORT = process.env.PORT || 3000;
 
@@ -26,7 +27,7 @@ app.use("/api/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/payment", payment2Route);
 app.use('/api/admin/users', AdminUser);
 app.use('/api/admin/room', adminRoom);
-
+app.use("/api/roomService",roomService);
 
 
 

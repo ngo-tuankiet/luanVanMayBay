@@ -32,3 +32,29 @@ exports.deleteByIdIn = bookingIds => {
     },
   });
 };
+
+exports.updateCancelByOrderId = orderId => {
+  return prisma.bookings.updateMany({
+    where: {
+      order_id: orderId,
+    },
+    data: {
+      booking_status: "cancelled",
+      updated_at: new Date(),
+    },
+  });
+};
+
+exports.updateCancelByOrderIds = orderIds => {
+  return prisma.bookings.updateMany({
+    where: {
+      order_id: {
+        in: orderIds,
+      },
+    },
+    data: {
+      booking_status: "cancelled",
+      updated_at: new Date(),
+    },
+  });
+};

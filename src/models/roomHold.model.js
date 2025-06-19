@@ -18,3 +18,21 @@ exports.create = roomHold => {
     data: roomHold,
   });
 };
+
+exports.updateExpiredAt = data => {
+  return prisma.room_hold.updateMany({
+    where: {
+      AND: {
+        room_id: {
+          in: data.roomIds,
+        },
+        check_in_date: data.checkInDate,
+        check_out_date: data.checkOutDate,
+        hold_by_id: data.userId,
+      },
+    },
+    data: {
+      expired_at: data.expiredAt,
+    },
+  });
+};

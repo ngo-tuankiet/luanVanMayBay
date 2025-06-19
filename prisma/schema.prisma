@@ -242,6 +242,7 @@ model orders {
   payment_status orders_payment_status @default(pending)
   created_at     DateTime              @default(now()) @db.Timestamp(0)
   updated_by     DateTime              @default(now()) @db.Timestamp(0)
+  expired_at      DateTime
 }
 
 enum booking_groups_payment_status {
