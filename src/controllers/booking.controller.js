@@ -8,7 +8,6 @@ const BookingServiceModel = require("../models/bookingService.model");
 const RoomHoldModel = require("../models/roomHold.model");
 const OrderModel = require("../models/order.model");
 
-// Tạo hold phòng
 exports.preview = async (req, res) => {
   try {
     const userId = req.user?.userId;
@@ -42,7 +41,6 @@ exports.preview = async (req, res) => {
       });
     }
 
-    // Validate rq
     if (!rooms || !Array.isArray(rooms) || rooms.length === 0) {
       return res.status(400).json({
         statusCode: 400,
@@ -51,16 +49,20 @@ exports.preview = async (req, res) => {
       });
     }
 
-    const bestRoomIds = [];
+    const nights = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+    const roomTypePrices = [];
+    const roomIdsToHold = [];
 
     for (const { room_type_id, quantity } of rooms) {
+      let total_price = 0;
+
       for (let i = 0; i < quantity; i++) {
         let bestRoomId = await getBestRoomId(
           room_type_id,
           startDate,
           endDate,
           userId,
-          bestRoomIds
+          roomIdsToHold
         );
 
         if (!bestRoomId) {
@@ -70,7 +72,7 @@ exports.preview = async (req, res) => {
             check_in_date,
             check_out_date,
             userId,
-            bestRoomIds
+            roomIdsToHold
           );
           if (fallBackRoomIds.length === 0) {
             return res.status(409).json({
@@ -81,14 +83,24 @@ exports.preview = async (req, res) => {
           }
           bestRoomId = fallBackRoomIds[0].room_id;
         }
-        bestRoomIds.push(bestRoomId);
+
+        const basePriceRow = await RoomModel.findRoomBasePrice(bestRoomId);
+        const base_price = basePriceRow[0]?.base_price || 0;
+        total_price += base_price * nights;
+
+        roomIdsToHold.push(bestRoomId);
       }
+
+      roomTypePrices.push({
+        room_type_id,
+        quantity,
+        total_price
+      });
     }
 
     let currentTime = new Date();
     currentTime.setMinutes(currentTime.getMinutes() + 10);
-    for (const roomId of bestRoomIds) {
-      // Hold
+    for (const roomId of roomIdsToHold) {
       await RoomHoldModel.create({
         room_id: roomId,
         check_in_date: startDate,
@@ -97,10 +109,16 @@ exports.preview = async (req, res) => {
         hold_by_id: userId,
       });
     }
+
     return res.status(200).json({
       statusCode: 200,
       message: "Giữ phòng thành công",
-      data: null,
+      data: {
+        check_in_date,
+        check_out_date,
+        total_nights: nights,
+        room_types: roomTypePrices
+      },
     });
   } catch (error) {
     console.error("Lỗi lấy giữ phòng: ", error);
@@ -112,7 +130,7 @@ exports.preview = async (req, res) => {
   }
 };
 
-// Xác nhận đặt phòng
+
 exports.confirm = async (req, res) => {
   try {
     const userId = req.user?.userId;
@@ -130,7 +148,6 @@ exports.confirm = async (req, res) => {
       rooms,
     } = req.body;
 
-    // Validate rq
     if (!check_in_date || !check_out_date) {
       return res.status(400).json({
         statusCode: 400,
@@ -216,7 +233,7 @@ exports.confirm = async (req, res) => {
       const { room_type_id, quantity, services } = roomRq;
 
       for (let i = 0; i < quantity; i++) {
-        // Tìm phòng theo tiêu chí
+       
         let bestRoomId = await getBestRoomId(
           room_type_id,
           startDate,
@@ -233,7 +250,7 @@ exports.confirm = async (req, res) => {
             userId
           );
           if (fallBackRoomIds.length === 0) {
-            // Rollback
+            
             if (bookingIds.length > 0) {
               await BookingModel.deleteByIdIn(bookingIds);
             }
@@ -251,13 +268,13 @@ exports.confirm = async (req, res) => {
         }
         roomIds.push(bestRoomId);
 
-        // Tính tiền phòng
+       
         const nights = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
         const basePriceRow = await RoomModel.findRoomBasePrice(bestRoomId);
         const basePrice = basePriceRow[0].base_price;
         let totalPrice = basePrice * nights;
 
-        // Tính khuyến mãi
+       
         const promotions =
           await PromotionModel.findPromotionRoomTypeId(room_type_id);
 
@@ -281,7 +298,7 @@ exports.confirm = async (req, res) => {
         };
         const bookingResult = await BookingModel.create(booking);
 
-        // Tính tiền dịch vụ, tiền dịch vụ không được tính trong giảm giá
+        
         let totalServicePrice = 0;
         const servicesResults = [];
 
@@ -373,13 +390,6 @@ exports.confirm = async (req, res) => {
   }
 };
 
-/*
- * Chọn phòng phù hợp nhất
- * Null khi:
- * * Tất cả phòng inActive
- * * Tất cả các phòng chưa được đặt
- * * Tất cả các phòng được đặt hết
- * */
 const getBestRoomId = async (
   roomTypeId,
   startDate,

@@ -14,11 +14,12 @@ model booking_groups {
   payment_status   booking_groups_payment_status? @default(pending)
   created_at       DateTime?                      @default(now()) @db.DateTime(0)
   updated_at       DateTime?                      @default(now()) @db.DateTime(0)
+  bookings         bookings[]
+  user             users                          @relation(fields: [user_id], references: [user_id])
 
   @@index([user_id], map: "user_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model booking_services {
   booking_service_id Int       @id @default(autoincrement())
   booking_id         Int
@@ -28,11 +29,13 @@ model booking_services {
   created_at         DateTime? @default(now()) @db.Timestamp(0)
   updated_at         DateTime? @default(now()) @db.Timestamp(0)
 
+  booking bookings @relation(fields: [booking_id], references: [booking_id])
+  service services @relation(fields: [service_id], references: [service_id])
+
   @@index([booking_id], map: "booking_id")
   @@index([service_id], map: "service_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model bookings {
   booking_id       Int                      @id @default(autoincrement())
   user_id          Int?
@@ -53,32 +56,36 @@ model bookings {
   updated_at       DateTime?                @default(now()) @db.Timestamp(0)
   hold_expired_at  DateTime?                @db.DateTime(0)
   booking_group_id Int?
-  order_id         Int
+  order_id         Int?
+
+  user             users?             @relation(fields: [user_id], references: [user_id])
+  room             rooms              @relation(fields: [room_id], references: [room_id])
+  promotion        promotions?        @relation(fields: [promotion_id], references: [promotion_id])
+  group            booking_groups?    @relation(fields: [booking_group_id], references: [booking_group_id])
+  order            orders?            @relation(fields: [order_id], references: [order_id])
+  booking_services booking_services[]
 
   @@index([promotion_id], map: "promotion_id")
   @@index([room_id], map: "room_id")
   @@index([user_id], map: "user_id")
 }
 
-model email_otps {
-  id          Int       @id @default(autoincrement())
-  email       String    @db.VarChar(100)
-  otp_code    String    @db.VarChar(10)
-  expired_at  DateTime  @db.DateTime(0)
-  created_at  DateTime? @default(now()) @db.Timestamp(0)
-  is_verified Boolean?  @default(false)
+model orders {
+  order_id       Int                   @id @default(autoincrement())
+  order_code     Int                   @unique(map: "orders_pk_2")
+  status         orders_status         @default(pending)
+  amount         Decimal               @default(0.00) @db.Decimal(10, 2)
+  user_id        Int
+  payment_method orders_payment_method @default(cash)
+  payment_status orders_payment_status @default(pending)
+  created_at     DateTime              @default(now()) @db.Timestamp(0)
+  updated_by     DateTime              @default(now()) @db.Timestamp(0)
+  expired_at     DateTime
+
+  bookings bookings[]
+  user     users      @relation(fields: [user_id], references: [user_id])
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model promotion_types {
-  promotion_type_id Int       @id @default(autoincrement())
-  type_name         String    @db.VarChar(50)
-  description       String?   @db.Text
-  created_at        DateTime? @default(now()) @db.Timestamp(0)
-  updated_at        DateTime? @default(now()) @db.Timestamp(0)
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model promotions {
   promotion_id      Int       @id @default(autoincrement())
   promotion_code    String    @unique(map: "promotion_code") @db.VarChar(50)
@@ -92,35 +99,27 @@ model promotions {
   created_at        DateTime? @default(now()) @db.Timestamp(0)
   updated_at        DateTime? @default(now()) @db.Timestamp(0)
 
+  room_promotions room_promotions[]
+  user_promotions user_promotions[]
+  bookings        bookings[]
+
   @@index([promotion_type_id], map: "promotion_type_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model room_promotions {
-  room_promotion_id Int       @id @default(autoincrement())
-  room_type_id      Int
-  promotion_id      Int
-  created_at        DateTime? @default(now()) @db.Timestamp(0)
-  updated_at        DateTime? @default(now()) @db.Timestamp(0)
+model services {
+  service_id   Int                   @id @default(autoincrement())
+  service_name String                @db.VarChar(100)
+  description  String?               @db.Text
+  price        Decimal               @db.Decimal(10, 2)
+  is_active    Boolean?              @default(true)
+  service_type services_service_type
+  created_at   DateTime?             @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?             @default(now()) @db.Timestamp(0)
 
-  @@unique([room_type_id, promotion_id], map: "unique_room_promotion")
-  @@index([promotion_id], map: "promotion_id")
+  room_services    room_services[]
+  booking_services booking_services[]
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model room_services {
-  room_service_id Int       @id @default(autoincrement())
-  room_type_id    Int
-  service_id      Int
-  is_included     Boolean?  @default(false)
-  created_at      DateTime? @default(now()) @db.Timestamp(0)
-  updated_at      DateTime? @default(now()) @db.Timestamp(0)
-
-  @@unique([room_type_id, service_id], map: "unique_room_service")
-  @@index([service_id], map: "service_id")
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model room_types {
   room_type_id     Int                @id @default(autoincrement())
   type_name        String             @db.VarChar(50)
@@ -133,14 +132,26 @@ model room_types {
   max_children     Int?
   rooms            rooms[]
   room_type_images room_type_images[]
+  room_services    room_services[]    @relation("RoomTypeServices")
+  room_promotions  room_promotions[]
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model room_services {
+  room_service_id Int       @id @default(autoincrement())
+  room_type_id    Int
+  service_id      Int
+  is_included     Boolean?  @default(false)
+  created_at      DateTime? @default(now()) @db.Timestamp(0)
+  updated_at      DateTime? @default(now()) @db.Timestamp(0)
+
+  room_type room_types @relation("RoomTypeServices", fields: [room_type_id], references: [room_type_id])
+  service   services   @relation(fields: [service_id], references: [service_id])
+}
+
 model rooms {
   room_id         Int           @id @default(autoincrement())
   room_number     String        @unique(map: "room_number") @db.VarChar(20)
   room_type_id    Int
-  room_type       room_types    @relation(fields: [room_type_id], references: [room_type_id])
   floor           Int
   status          rooms_status? @default(available)
   is_active       Boolean?      @default(true)
@@ -149,34 +160,25 @@ model rooms {
   hold_expired_at DateTime?     @db.DateTime(6)
   hold_by         Int?
 
+  room_type  room_types  @relation(fields: [room_type_id], references: [room_type_id])
+  bookings   bookings[]
+  room_holds room_hold[]
+
   @@index([room_type_id], map: "room_type_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model services {
-  service_id   Int                   @id @default(autoincrement())
-  service_name String                @db.VarChar(100)
-  description  String?               @db.Text
-  price        Decimal               @db.Decimal(10, 2)
-  is_active    Boolean?              @default(true)
-  service_type services_service_type
-  created_at   DateTime?             @default(now()) @db.Timestamp(0)
-  updated_at   DateTime?             @default(now()) @db.Timestamp(0)
+model room_hold {
+  room_hold_id   Int       @id @default(autoincrement())
+  room_id        Int?
+  check_in_date  DateTime? @db.Date
+  check_out_date DateTime? @db.Date
+  expired_at     DateTime? @db.DateTime(6)
+  hold_by_id     Int?
+
+  room         rooms? @relation(fields: [room_id], references: [room_id])
+  hold_by_user users? @relation(fields: [hold_by_id], references: [user_id])
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model user_conditions {
-  condition_id    Int                        @id @default(autoincrement())
-  condition_name  String                     @db.VarChar(100)
-  description     String?                    @db.Text
-  min_bookings    Int?
-  min_total_spent Decimal?                   @db.Decimal(10, 2)
-  user_type       user_conditions_user_type?
-  created_at      DateTime?                  @default(now()) @db.Timestamp(0)
-  updated_at      DateTime?                  @default(now()) @db.Timestamp(0)
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model user_promotions {
   user_promotion_id Int       @id @default(autoincrement())
   user_id           Int
@@ -186,12 +188,28 @@ model user_promotions {
   created_at        DateTime? @default(now()) @db.Timestamp(0)
   used_at           DateTime? @db.Timestamp(0)
 
+  user      users            @relation(fields: [user_id], references: [user_id])
+  promotion promotions       @relation(fields: [promotion_id], references: [promotion_id])
+  condition user_conditions? @relation(fields: [condition_id], references: [condition_id])
+
   @@index([condition_id], map: "condition_id")
   @@index([promotion_id], map: "promotion_id")
   @@index([user_id], map: "user_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_conditions {
+  condition_id    Int                        @id @default(autoincrement())
+  condition_name  String                     @db.VarChar(100)
+  description     String?                    @db.Text
+  min_bookings    Int?
+  min_total_spent Decimal?                   @db.Decimal(10, 2)
+  user_type       user_conditions_user_type?
+  created_at      DateTime?                  @default(now()) @db.Timestamp(0)
+  updated_at      DateTime?                  @default(now()) @db.Timestamp(0)
+
+  user_promotions user_promotions[]
+}
+
 model users {
   user_id       Int         @id @default(autoincrement())
   username      String      @unique(map: "username") @db.VarChar(50)
@@ -206,43 +224,41 @@ model users {
   role          users_role? @default(user)
   created_at    DateTime?   @default(now()) @db.Timestamp(0)
   updated_at    DateTime?   @default(now()) @db.Timestamp(0)
+
+  bookings        bookings[]
+  booking_groups  booking_groups[]
+  orders          orders[]
+  user_promotions user_promotions[]
+  room_hold       room_hold[]
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model room_hold {
-  room_hold_id   Int       @id @default(autoincrement())
-  room_id        Int?
-  check_in_date  DateTime? @db.Date
-  check_out_date DateTime? @db.Date
-  expired_at     DateTime? @db.DateTime(6)
-  hold_by_id     Int?
+model room_promotions {
+  room_promotion_id Int       @id @default(autoincrement())
+  room_type_id      Int
+  promotion_id      Int
+  created_at        DateTime? @default(now()) @db.Timestamp(0)
+  updated_at        DateTime? @default(now()) @db.Timestamp(0)
+
+  room_type room_types @relation(fields: [room_type_id], references: [room_type_id])
+  promotion promotions @relation(fields: [promotion_id], references: [promotion_id])
+
+  @@unique([room_type_id, promotion_id], map: "unique_room_promotion")
+  @@index([promotion_id], map: "promotion_id")
 }
 
 model room_type_images {
-  image_id      Int        @id @default(autoincrement())
+  image_id      Int       @id @default(autoincrement())
   room_type_id  Int
-  room_type     room_types @relation(fields: [room_type_id], references: [room_type_id])
-  image_url     String     @db.VarChar(255)
-  image_name    String     @db.VarChar(100)
+  image_url     String    @db.VarChar(255)
+  image_name    String    @db.VarChar(100)
   image_size    Int?
-  is_primary    Boolean    @default(false)
-  display_order Int        @default(0)
-  created_at    DateTime?  @default(now()) @db.Timestamp(0)
+  is_primary    Boolean   @default(false)
+  display_order Int       @default(0)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+
+  room_type room_types @relation(fields: [room_type_id], references: [room_type_id])
 
   @@index([room_type_id])
-}
-
-model orders {
-  order_id       Int                   @id @default(autoincrement())
-  order_code     Int                   @unique(map: "orders_pk_2")
-  status         orders_status         @default(pending)
-  amount         Decimal               @default(0.00) @db.Decimal(10, 2)
-  user_id        Int
-  payment_method orders_payment_method @default(cash)
-  payment_status orders_payment_status @default(pending)
-  created_at     DateTime              @default(now()) @db.Timestamp(0)
-  updated_by     DateTime              @default(now()) @db.Timestamp(0)
-  expired_at      DateTime
 }
 
 enum booking_groups_payment_status {
